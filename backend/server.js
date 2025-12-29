@@ -4,11 +4,17 @@ const bodyParser = require('body-parser');
 const apiRoutes = require('./routes/api');
 const pool = require('./db');
 
+const path = require('path');
+
 const app = express();
 const PORT = 3000;
 
 app.use(cors());
-app.use(bodyParser.json());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+// Serve static uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api', apiRoutes);
@@ -63,11 +69,30 @@ async function startServer() {
                 PRIMARY KEY (follower_id, followed_id),
                 FOREIGN KEY (follower_id) REFERENCES users(id),
                 FOREIGN KEY (followed_id) REFERENCES users(id)
+            )`,
+            `CREATE TABLE IF NOT EXISTS favorites (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                post_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_favorite (user_id, post_id)
             )`
         ];
 
         for (const query of queries) {
             await connection.execute(query);
+        }
+
+        // Migration: Add avatar column if it doesn't exist
+        try {
+            await connection.execute("ALTER TABLE users ADD COLUMN avatar LONGTEXT");
+            console.log("Verified database schema: Added 'avatar' column to users.");
+        } catch (err) {
+            if (err.code !== 'ER_DUP_FIELDNAME') {
+                console.error("Migration warning:", err.message);
+            }
         }
 
         console.log('✅ Database schema verified/updated.');

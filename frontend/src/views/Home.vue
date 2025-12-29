@@ -12,48 +12,41 @@ const loading = ref(false)
 const followedAuthors = ref(new Set()) // Track followed user IDs
 
 const fetchPosts = async () => {
-  loading.value = true
-  try {
-    const params = {}
-    if (route.query.filter) params.filter = route.query.filter
-    if (route.query.category) params.category = route.query.category
-    if (route.query.q) params.q = route.query.q
+    loading.value = true
+    try {
+        const params = {}
+        if (route.query.filter) params.filter = route.query.filter
+        
+        // Pass filter to backend. We don't verify q/category in backend yet, so we stick to client side filtering for those if needed.
+        // Actually, let's pass params to api.
+        const response = await api.get('/posts', { params: { filter: params.filter } })
+        let allPosts = response.data.map(p => ({
+            ...p,
+            likes: p.likeCount,
+            comments: [], 
+            showCommentBox: false,
+            newComment: ''
+        }))
 
-    const response = await api.get('/posts')
-    let allPosts = response.data.map(p => ({
-        ...p,
-        likes: p.likeCount, // Use real count
-        comments: [], // Comments fetched on demand
-        showCommentBox: false,
-        newComment: ''
-    }))
+        // Client-side search (since backend doesn't support 'q' yet)
+        if (route.query.q) {
+            const q = route.query.q.toLowerCase()
+            allPosts = allPosts.filter(p => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
+        }
 
-    if (params.q) {
-        const q = params.q.toLowerCase()
-        allPosts = allPosts.filter(p => p.title.toLowerCase().includes(q) || p.content.toLowerCase().includes(q))
+        // Backend now handles sort and follow filter
+        
+        posts.value = allPosts
+    } catch (e) {
+        console.error(e)
+        if (e.response && e.response.status === 401 && route.query.filter === 'follow') {
+             // If trying to view follow tab without login, maybe redirect or just show nothing.
+             // For now, let's redirect to login if they explicitly asked for follow tab
+             router.push('/login')
+        }
+    } finally {
+        loading.value = false
     }
-
-    if (params.filter === 'hot') {
-        allPosts.sort((a, b) => b.likes - a.likes)
-    } else if (params.filter === 'latest') {
-        allPosts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    } else if (params.filter === 'follow') {
-        // Since we don't have a "get posts by followed users" API yet, 
-        // we might still mock this part or just show all reversed. 
-        // For now, let's keep the mock reverse but note it.
-        // Or if we check is_followed in allPosts (if we added it to getAllPosts), we can filter.
-        // NOTE: getAllPosts currently only checks if *current user* liked the post, it doesn't check if current user follows the author.
-        // To implement true "Follow" tab, we need a new API endpoint. 
-        // For this step, I will just stick to the existing mock behavior for the TAB, but make the BUTTON functional.
-        allPosts.reverse()
-    }
-
-    posts.value = allPosts
-  } catch (e) {
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
 }
 
 onMounted(fetchPosts)
@@ -73,6 +66,18 @@ const handleLike = async (post) => {
         post.isLiked = liked
         if (liked) post.likes++ 
         else post.likes--
+    } catch (e) {
+        console.error(e)
+        alert('操作失败')
+    }
+}
+
+const handleFavorite = async (post) => {
+    if (!authStore.user) return router.push('/login')
+    try {
+        const response = await api.post(`/posts/${post.id}/favorite`)
+        const favorited = response.data.favorited
+        post.isFavorited = favorited
     } catch (e) {
         console.error(e)
         alert('操作失败')
@@ -161,7 +166,9 @@ const isFollowed = (author) => {
     <div class="post-list">
       <div v-for="post in posts" :key="post.id" class="post-card">
         <div class="post-header">
-          <div class="avatar-placeholder">{{ post.author?.username?.charAt(0).toUpperCase() }}</div>
+          <div class="avatar-placeholder" :style="{ backgroundImage: post.author?.avatar ? `url(${post.author.avatar})` : '' }">
+              {{ !post.author?.avatar ? post.author?.username?.charAt(0).toUpperCase() : '' }}
+          </div>
           <div class="info">
             <span class="username">{{ post.author?.username }}</span>
             <span class="time">{{ formatDate(post.createdAt) }}</span>
@@ -180,13 +187,25 @@ const isFollowed = (author) => {
         </div>
         <div class="post-footer">
           <div class="action" @click="handleShare(post)">
-             <i class="iconfont icon-share"></i> <span>转发</span>
+             <span>转发</span>
+             <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
           </div>
           <div class="action" @click="handleCommentClick(post)">
-             <i class="iconfont icon-comment"></i> <span>{{ (post.comments.length || post.commentCount) ? (post.comments.length || post.commentCount) + ' 评论' : '评论' }}</span>
+             <span>{{ (post.comments.length || post.commentCount) ? (post.comments.length || post.commentCount) + ' 评论' : '评论' }}</span>
+             <svg class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
           </div>
-          <div class="action" :class="{ 'liked': post.likes > 0 }" @click="handleLike(post)">
-             <i class="iconfont icon-like"></i> <span>{{ post.likes > 0 ? post.likes + ' 点赞' : '点赞' }}</span>
+          <div class="action" :class="{ 'liked': post.isLiked }" @click="handleLike(post)">
+             <span>{{ post.likes > 0 ? post.likes + ' 点赞' : '点赞' }}</span>
+             <!-- Thumb Up Icon -->
+             <svg v-if="!post.isLiked" class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+             <!-- Solid/Filled Thumb for Liked state (handled by CSS fill usually, but let's use fill='currentColor' structure for simplicity or specific icon) -->
+             <!-- Solid/Filled Thumb for Liked state (handled by CSS fill usually, but let's use fill='currentColor' structure for simplicity or specific icon) -->
+             <svg v-else class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+          </div>
+          <div class="action" :class="{ 'favorited': post.isFavorited }" @click="handleFavorite(post)">
+             <span>{{ post.isFavorited ? '已收藏' : '收藏' }}</span>
+             <svg v-if="!post.isFavorited" class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+             <svg v-else class="icon-svg" viewBox="0 0 24 24" width="16" height="16" stroke="orange" stroke-width="2" fill="orange" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
           </div>
         </div>
         
@@ -306,6 +325,8 @@ const isFollowed = (author) => {
   justify-content: center;
   font-weight: bold;
   margin-right: 12px;
+  background-size: cover;
+  background-position: center;
 }
 .info {
   display: flex;
@@ -381,6 +402,9 @@ const isFollowed = (author) => {
 }
 .action.liked {
     color: #fa7d3c;
+}
+.action.favorited {
+    color: orange;
 }
 
 /* Comment Section */

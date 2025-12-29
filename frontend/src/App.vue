@@ -1,12 +1,24 @@
 <script setup>
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import api from '@/utils/http'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const user = computed(() => authStore.user)
 const searchQuery = ref('')
+const hotPosts = ref([])
+
+onMounted(async () => {
+    // Fetch hot posts for the right sidebar widget
+    try {
+        const response = await api.get('/posts?filter=hot&limit=5')
+        hotPosts.value = response.data
+    } catch (e) {
+        console.error('Failed to fetch hot posts', e)
+    }
+})
 
 const logout = () => {
   authStore.logout()
@@ -62,8 +74,19 @@ const handleSearch = () => {
                 <RouterLink to="/register">注册</RouterLink>
             </div>
             <div class="user-area" v-else>
-                <RouterLink to="/profile">{{ user.username }}</RouterLink>
-                <button @click="logout" class="btn-logout">退出</button>
+                <div class="user-dropdown">
+                    <div class="dropdown-trigger">
+                         <span class="header-avatar" :style="{ backgroundImage: user.avatar ? `url(${user.avatar})` : '' }">
+                            {{ !user.avatar ? user.username.charAt(0).toUpperCase() : '' }}
+                         </span>
+                         <span class="header-username">{{ user.username }}</span>
+                    </div>
+                    <!-- Dropdown Menu -->
+                    <div class="dropdown-menu">
+                        <RouterLink to="/profile" class="dropdown-item">个人中心</RouterLink>
+                        <div @click="logout" class="dropdown-item">退出登录</div>
+                    </div>
+                </div>
             </div>
             </div>
         </div>
@@ -75,8 +98,9 @@ const handleSearch = () => {
                 <div class="menu-group">
                     <h3><i class="iconfont icon-home"></i> 热门推荐</h3>
                     <ul>
-                    <li :class="{ active: $route.query.filter === 'recommended' || !$route.query.filter }"><RouterLink to="/?filter=recommended">综合推荐</RouterLink></li>
-                    <li :class="{ active: $route.query.filter === 'hot' }"><RouterLink to="/?filter=hot">热门榜单</RouterLink></li>
+                    <li :class="{ active: $route.query.filter === 'recommended' || (!$route.query.filter && $route.path === '/') }"><RouterLink to="/?filter=recommended">综合推荐</RouterLink></li>
+                    <li :class="{ active: $route.query.filter === 'follow' }"><RouterLink to="/?filter=follow">关注</RouterLink></li>
+                    <li :class="{ active: $route.query.filter === 'latest' }"><RouterLink to="/?filter=latest">最新发布</RouterLink></li>
                     </ul>
                 </div>
                 <div class="menu-group">
@@ -108,7 +132,9 @@ const handleSearch = () => {
                 </div>
                 <div class="user-widget" v-else>
                     <div class="user-card">
-                    <div class="big-avatar">{{ authStore.user.username.charAt(0).toUpperCase() }}</div>
+                    <div class="big-avatar" :style="{ backgroundImage: authStore.user.avatar ? `url(${authStore.user.avatar})` : '' }">
+                        {{ !authStore.user.avatar ? authStore.user.username.charAt(0).toUpperCase() : '' }}
+                    </div>
                     <p class="user-name">{{ authStore.user.username }}</p>
                     <div class="stats">
                         <div class="stat"><strong>0</strong><span>关注</span></div>
@@ -116,6 +142,18 @@ const handleSearch = () => {
                         <div class="stat"><strong>0</strong><span>文章</span></div>
                     </div>
                     </div>
+                </div>
+
+                <!-- Hot List Widget -->
+                <div class="trending-widget">
+                    <h3><i class="iconfont icon-fire"></i> 热门榜单</h3>
+                    <ul v-if="hotPosts.length > 0">
+                        <li v-for="(post, index) in hotPosts" :key="post.id">
+                             <span class="rank" :class="{ top: index < 3 }">{{ index + 1 }}</span>
+                             <RouterLink :to="'/posts/' + post.id">{{ post.title }}</RouterLink>
+                        </li>
+                    </ul>
+                    <div v-else style="padding: 10px; color: #999; font-size: 13px;">暂无热门内容</div>
                 </div>
             </aside>
         </div>
@@ -274,14 +312,97 @@ ul {
   color: #fa7d3c;
 }
 
-.btn-logout {
-    border: none;
-    background: none;
-    color: #666;
-    cursor: pointer;
-    font-size: 15px;
+.nav-links a:hover {
+  color: #fa7d3c;
 }
-.btn-logout:hover {
+
+/* User Dropdown */
+.user-dropdown {
+    position: relative;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.dropdown-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0; /* Increase hover area vertically */
+}
+
+.header-username {
+    font-weight: 500;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.header-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #f0f2f5;
+    color: #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+    border: 1px solid #e1e4e8;
+    transition: all 0.3s;
+    background-size: cover;
+    background-position: center;
+}
+
+.user-dropdown:hover .header-avatar {
+    background: #fa7d3c;
+    color: #fff;
+    border-color: #fa7d3c;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0; /* Align to right */
+    background: #fff;
+    border: 1px solid #eee;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border-radius: 8px;
+    width: 120px;
+    display: none;
+    flex-direction: column;
+    padding: 8px 0;
+    z-index: 2000;
+    margin-top: -5px; /* Pull up slightly to overlap header padding if needed, or closer to trigger */
+}
+
+.user-dropdown:hover .dropdown-menu {
+    display: flex;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdown-item {
+    padding: 10px 0;
+    font-size: 14px;
+    color: #333;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    transition: background 0.2s, color 0.2s;
+    display: block;
+}
+
+.dropdown-item:hover {
+    background: #fdfdfd;
     color: #fa7d3c;
 }
 
@@ -326,7 +447,7 @@ ul {
   margin-bottom: 5px;
   transition: background-color 0.2s;
 }
-.left-sidebar ul li a:hover, .left-sidebar ul li a.router-link-active {
+.left-sidebar ul li a:hover, .left-sidebar ul li.active a, .left-sidebar ul li a.active {
   background-color: #fceceb;
   color: #fa7d3c;
   font-weight: bold;
@@ -421,6 +542,8 @@ ul {
   align-items: center;
   font-size: 24px;
   color: #888;
+  background-size: cover;
+  background-position: center;
 }
 .user-widget .user-name {
   text-align: center;
