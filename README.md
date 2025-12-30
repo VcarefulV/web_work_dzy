@@ -6,4 +6,4 @@
 管理功能：个人中心与详情页均支持“立即发布”和“删除”操作。
 问题修复：
 修复了 Failed to fetch dynamically imported module 前端错误（因重复代码导致）。
-修复了后端 SyntaxError（因模板字
+修复了后端 SyntaxError（因模板字符串与反引号误写导致）。
