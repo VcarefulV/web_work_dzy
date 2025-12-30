@@ -183,6 +183,9 @@ const isFollowed = (author) => {
         </div>
         <div class="post-content">
           <h3><RouterLink :to="'/posts/' + post.id">{{ post.title }}</RouterLink></h3>
+          <div v-if="post.image" class="post-cover">
+              <img :src="post.image" alt="Cover" @click="$router.push('/posts/' + post.id)" />
+          </div>
           <p>{{ post.content }}</p>
         </div>
         <div class="post-footer">
@@ -373,6 +376,27 @@ const isFollowed = (author) => {
 .post-content h3 a:hover {
   color: #fa7d3c;
 }
+
+.post-cover {
+    margin: 10px 0;
+    max-height: 200px;
+    overflow: hidden;
+    border-radius: 6px;
+}
+
+.post-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.3s;
+}
+
+.post-cover img:hover {
+    transform: scale(1.02);
+}
+
 .post-content p {
   color: #555;
   line-height: 1.6;

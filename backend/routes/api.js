@@ -14,10 +14,12 @@ router.post('/auth/login', authController.login);
 // Posts
 router.get('/posts', optionalAuth, postController.getAllPosts);
 router.get('/posts/:id', postController.getPostById);
-router.get('/posts/user/:username', postController.getPostsByUser);
+router.get('/posts/user/:username', optionalAuth, postController.getPostsByUser);
 router.post('/posts', basicAuth, postController.createPost);
 router.post('/posts/:id/like', basicAuth, postController.toggleLike);
 router.post('/posts/:id/favorite', basicAuth, postController.toggleFavorite); // New
+router.delete('/posts/:id', basicAuth, postController.deletePost);
+router.put('/posts/:id', basicAuth, postController.updatePost);
 
 
 // Comments

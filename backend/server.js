@@ -40,6 +40,9 @@ async function startServer() {
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 content TEXT NOT NULL,
+                image LONGTEXT,
+                status ENUM('published', 'draft', 'scheduled') DEFAULT 'published',
+                publish_at TIMESTAMP NULL,
                 user_id INT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
@@ -47,6 +50,7 @@ async function startServer() {
             `CREATE TABLE IF NOT EXISTS comments (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 content TEXT NOT NULL,
+                image LONGTEXT,
                 user_id INT NOT NULL,
                 post_id INT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -91,7 +95,43 @@ async function startServer() {
             console.log("Verified database schema: Added 'avatar' column to users.");
         } catch (err) {
             if (err.code !== 'ER_DUP_FIELDNAME') {
-                console.error("Migration warning:", err.message);
+                console.error("Migration warning (users):", err.message);
+            }
+        }
+
+        try {
+            await connection.execute("ALTER TABLE comments ADD COLUMN image LONGTEXT");
+            console.log("Verified database schema: Added 'image' column to comments.");
+        } catch (err) {
+            if (err.code !== 'ER_DUP_FIELDNAME') {
+                console.error("Migration warning (comments):", err.message);
+            }
+        }
+
+        try {
+            await connection.execute("ALTER TABLE posts ADD COLUMN image LONGTEXT");
+            console.log("Verified database schema: Added 'image' column to posts.");
+        } catch (err) {
+            if (err.code !== 'ER_DUP_FIELDNAME') {
+                console.error("Migration warning (posts):", err.message);
+            }
+        }
+
+        try {
+            await connection.execute("ALTER TABLE posts ADD COLUMN status ENUM('published', 'draft', 'scheduled') DEFAULT 'published'");
+            console.log("Verified database schema: Added 'status' column to posts.");
+        } catch (err) {
+            if (err.code !== 'ER_DUP_FIELDNAME') {
+                console.error("Migration warning (posts status):", err.message);
+            }
+        }
+
+        try {
+            await connection.execute("ALTER TABLE posts ADD COLUMN publish_at TIMESTAMP NULL");
+            console.log("Verified database schema: Added 'publish_at' column to posts.");
+        } catch (err) {
+            if (err.code !== 'ER_DUP_FIELDNAME') {
+                console.error("Migration warning (posts publish_at):", err.message);
             }
         }
 

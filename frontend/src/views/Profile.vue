@@ -13,6 +13,8 @@ const activeTab = ref('posts') // posts, likes, favorites
 // Tabs configuration
 const tabs = [
   { key: 'posts', label: '我的文章' },
+  { key: 'drafts', label: '草稿箱' },
+  { key: 'scheduled', label: '定时发布' },
   { key: 'favorites', label: '我的收藏' },
   { key: 'likes', label: '我的赞' }
 ]
@@ -28,10 +30,9 @@ onMounted(async () => {
   
   if (authStore.user) {
     try {
-      // Fetch user posts (using general fetch for now and filtering)
-      const response = await api.get('/posts') 
-      // Filter client side to ensure it works without backend changes
-      myPosts.value = response.data.filter(p => p.author && p.author.username === authStore.user.username)
+      // Fetch user posts (using specific endpoint that supports drafts for owner)
+      const response = await api.get(`/posts/user/${authStore.user.username}`) 
+      myPosts.value = response.data
       
       // Refresh user info to get latest stats
       const userRes = await api.get('/users/me')
@@ -56,7 +57,17 @@ const changeTab = (tabKey) => {
 }
 
 const currentList = computed(() => {
-    if (activeTab.value === 'posts') return myPosts.value
+    if (activeTab.value === 'posts') {
+        const now = new Date();
+        return myPosts.value.filter(p => !p.status || p.status === 'published' || (p.status === 'scheduled' && new Date(p.publishAt) <= now))
+    }
+    if (activeTab.value === 'drafts') {
+        return myPosts.value.filter(p => p.status === 'draft')
+    }
+    if (activeTab.value === 'scheduled') {
+        const now = new Date();
+        return myPosts.value.filter(p => p.status === 'scheduled' && new Date(p.publishAt) > now)
+    }
     if (activeTab.value === 'favorites') return favoritePosts.value
     if (activeTab.value === 'likes') return likedPosts.value
     return []
@@ -66,8 +77,8 @@ const fetchUserData = async () => {
     if (!authStore.user) return
     try {
         // Fetch posts
-        const postsRes = await api.get('/posts') 
-        myPosts.value = postsRes.data.filter(p => p.author && p.author.username === authStore.user.username)
+        const postsRes = await api.get(`/posts/user/${authStore.user.username}`) 
+        myPosts.value = postsRes.data
         
         // Fetch favorites
         const favRes = await api.get('/users/me/favorites')
@@ -95,8 +106,9 @@ onMounted(async () => {
 })
 
 const formatDate = (dateStr) => {
+  if (!dateStr) return ''
   const date = new Date(dateStr)
-  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
+  return date.toLocaleString()
 }
 
 // Edit Profile Logic
@@ -164,6 +176,23 @@ const submitUpdate = async () => {
         alert(e.response?.data?.message || '修改失败')
     }
 }
+
+
+const deletePost = async (id) => {
+    if (!confirm('确定要删除这篇文章吗？此操作不可撤销。')) return
+    try {
+        await api.delete(`/posts/${id}`)
+        // Remove from local list
+        myPosts.value = myPosts.value.filter(p => p.id !== id)
+        // Refresh stats if needed
+        if (authStore.user && authStore.user.stats) {
+             authStore.user.stats.post_count--
+        }
+    } catch (e) {
+        console.error(e)
+        alert('删除失败')
+    }
+}
 </script>
 
 <template>
@@ -223,12 +252,19 @@ const submitUpdate = async () => {
                 <div v-for="post in currentList" :key="post.id" class="list-item">
                     <div class="item-main">
                         <h3><RouterLink :to="'/posts/' + post.id">{{ post.title }}</RouterLink></h3>
+                        <div v-if="post.image" class="post-cover-small">
+                             <img :src="post.image" alt="Cover" />
+                        </div>
                         <p class="excerpt">{{ post.content.substring(0, 100) }}...</p>
                         <div class="meta">
-                            <span>{{ formatDate(post.createdAt) }}</span>
-                            <span v-if="activeTab !== 'posts'">By {{ post.author?.username || 'Unknown' }}</span>
+                            <span>{{ formatDate(post.publishAt || post.createdAt) }}</span>
+                            <span v-if="post.status === 'scheduled' && activeTab === 'scheduled'" class="status-tag scheduled">
+                                计划发布: {{ new Date(post.publishAt).toLocaleString() }}
+                            </span>
+                            <span v-if="activeTab !== 'posts' && activeTab !== 'drafts' && activeTab !== 'scheduled'">By {{ post.author?.username || 'Unknown' }}</span>
                         </div>
                     </div>
+                    <button class="delete-btn-small" @click.stop="deletePost(post.id)" title="删除文章">🗑️</button>
                 </div>
             </template>
             <div v-if="currentList.length === 0" class="empty-state">
@@ -386,6 +422,9 @@ const submitUpdate = async () => {
     padding: 20px;
     border-bottom: 1px solid #f5f5f5;
     transition: background 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
 }
 .list-item:hover {
     background: #f9f9f9;
@@ -401,6 +440,18 @@ const submitUpdate = async () => {
 .list-item h3 a:hover {
     color: #fa7d3c;
 }
+.post-cover-small {
+    margin: 8px 0;
+    width: 120px;
+    height: 80px;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.post-cover-small img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 .excerpt {
     color: #888;
     font-size: 14px;
@@ -410,6 +461,43 @@ const submitUpdate = async () => {
 .meta {
     font-size: 12px;
     color: #bbb;
+}
+
+.item-main {
+    flex: 1;
+}
+.delete-btn-small {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    padding: 10px;
+}
+.delete-btn-small:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+.list-item {
+    padding: 20px;
+    border-bottom: 1px solid #f5f5f5;
+    transition: background 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+.status-tag {
+    margin-left: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.status-tag.scheduled {
+    background: #e6f7ff;
+    color: #1890ff;
+    border: 1px solid #91d5ff;
 }
 
 .like-item {

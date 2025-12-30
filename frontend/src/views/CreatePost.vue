@@ -5,14 +5,77 @@ import { useRouter } from 'vue-router'
 
 const title = ref('')
 const content = ref('')
+const postImage = ref(null)
+const fileInput = ref(null)
 const router = useRouter()
+const postStatus = ref('published')
+const publishTime = ref('')
+
+const triggerFileInput = () => {
+    fileInput.value.click()
+}
+
+const handleFileChange = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+        alert('请上传图片文件')
+        return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        alert('图片大小不能超过5MB')
+        return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+        postImage.value = e.target.result
+    }
+    reader.readAsDataURL(file)
+}
+
+const clearImage = () => {
+    postImage.value = null
+    if (fileInput.value) {
+        fileInput.value.value = ''
+    }
+}
 
 const handleSubmit = async () => {
+    // Basic validation
+    if (postStatus.value === 'scheduled' && !publishTime.value) {
+        alert('请选择定时发布时间')
+        return
+    }
   try {
-    await api.post('/posts', { title: title.value, content: content.value })
-    router.push('/')
+    const payload = { 
+        title: title.value, 
+        content: content.value,
+        image: postImage.value,
+        status: postStatus.value
+    }
+    
+    if (postStatus.value === 'scheduled') {
+        // Convert local time to ISO string or just send as is (backend expects timestamp friendly)
+        // Let's send ISO string
+        payload.publishAt = new Date(publishTime.value).toISOString()
+    }
+
+    await api.post('/posts', payload)
+    
+    if (postStatus.value === 'draft') {
+        alert('已保存到草稿箱')
+    } else if (postStatus.value === 'scheduled') {
+        alert('已设置为定时发布')
+    } else {
+        alert('发布成功')
+    }
+    router.push('/') // Or maybe to profile? Let's stick to home for now, or profile if draft.
   } catch (e) {
-    alert('发布失败')
+    alert(e.response?.data?.message || '发布失败')
+    console.error(e)
   }
 }
 </script>
@@ -45,6 +108,50 @@ const handleSubmit = async () => {
             class="textarea-field"
           ></textarea>
         </div>
+
+        <div class="form-group">
+            <label>封面图片</label>
+            <div class="image-upload-area">
+                <input 
+                    type="file" 
+                    ref="fileInput" 
+                    accept="image/*" 
+                    style="display: none" 
+                    @change="handleFileChange"
+                >
+                <div v-if="!postImage" class="upload-placeholder" @click="triggerFileInput">
+                    <span class="icon">📷</span>
+                    <span>点击上传图片</span>
+                </div>
+                <div v-else class="image-preview">
+                    <img :src="postImage" alt="Preview" />
+                    <button type="button" class="remove-image" @click="clearImage">×</button>
+                </div>
+    
+        </div>
+        </div>
+        
+        <!-- Publishing Options -->
+        <div class="form-group options-group">
+            <label>发布选项</label>
+            <div class="radio-group">
+                <label class="radio-label">
+                    <input type="radio" v-model="postStatus" value="published"> 立即发布
+                </label>
+                <label class="radio-label">
+                    <input type="radio" v-model="postStatus" value="draft"> 存为草稿
+                </label>
+                <label class="radio-label">
+                    <input type="radio" v-model="postStatus" value="scheduled"> 定时发布
+                </label>
+            </div>
+            
+            <div v-if="postStatus === 'scheduled'" class="schedule-input animated-fade">
+                <label>选择发布时间：</label>
+                <input type="datetime-local" v-model="publishTime" class="input-field date-input">
+            </div>
+        </div>
+
         <div class="form-actions">
           <button type="button" @click="$router.back()" class="btn-cancel">取消</button>
           <button type="submit" class="btn-submit">发布文章</button>
@@ -155,5 +262,131 @@ const handleSubmit = async () => {
 .btn-submit:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 15px rgba(250, 125, 60, 0.4);
+}
+
+/* Image Upload */
+.image-upload-area {
+    margin-top: 10px;
+}
+
+.upload-placeholder {
+    border: 2px dashed #ddd;
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: #fafafa;
+    color: #999;
+}
+
+.upload-placeholder:hover {
+    border-color: #fa7d3c;
+    color: #fa7d3c;
+    background: #fff5f0;
+}
+
+.upload-placeholder .icon {
+    font-size: 24px;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.image-preview {
+    position: relative;
+    display: inline-block;
+    border: 1px solid #eee;
+    padding: 5px;
+    border-radius: 4px;
+    max-width: 100%;
+}
+
+.image-preview img {
+    max-width: 100%;
+    max-height: 300px;
+    display: block;
+    border-radius: 4px;
+}
+
+.remove-image {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #ff4d4f;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.options-group {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid #eee;
+}
+
+.radio-group {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 10px;
+}
+
+.radio-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+    padding: 5px 10px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.radio-label:hover {
+    background: #eef;
+}
+
+.radio-label input {
+    accent-color: #fa7d3c;
+    width: 16px;
+    height: 16px;
+}
+
+.schedule-input {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed #ddd;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.schedule-input label {
+    margin: 0;
+    font-size: 14px;
+}
+
+.date-input {
+    width: auto;
+    padding: 8px;
+}
+
+.animated-fade {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 </style>
