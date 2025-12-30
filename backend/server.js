@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const apiRoutes = require('./routes/api');
+const tagsRoutes = require('./routes/tags'); // New route file for tags if we want separate, or just put in api
 const pool = require('./db');
 
 const path = require('path');
@@ -18,6 +19,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Routes
 app.use('/api', apiRoutes);
+app.use('/api/tags', tagsRoutes);
 
 // Database initialization and Server Start
 async function startServer() {
@@ -82,6 +84,17 @@ async function startServer() {
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
                 UNIQUE KEY unique_favorite (user_id, post_id)
+            )`,
+            `CREATE TABLE IF NOT EXISTS tags (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(50) NOT NULL UNIQUE
+            )`,
+            `CREATE TABLE IF NOT EXISTS post_tags (
+                post_id INT NOT NULL,
+                tag_id INT NOT NULL,
+                PRIMARY KEY (post_id, tag_id),
+                FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+                FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
             )`
         ];
 
@@ -133,6 +146,21 @@ async function startServer() {
             if (err.code !== 'ER_DUP_FIELDNAME') {
                 console.error("Migration warning (posts publish_at):", err.message);
             }
+        }
+
+        // Seed Tags
+        try {
+            const [rows] = await connection.execute('SELECT count(*) as count FROM tags');
+            if (rows[0].count === 0) {
+                const initialTags = ['前端', '后端', 'AI', '生活', '杂谈'];
+                // Insert one by one or bulk
+                for (const tag of initialTags) {
+                    await connection.execute('INSERT INTO tags (name) VALUES (?)', [tag]);
+                }
+                console.log('Seeded initial tags.');
+            }
+        } catch (err) {
+            console.error("Seeding error:", err);
         }
 
         console.log('✅ Database schema verified/updated.');

@@ -119,7 +119,12 @@ const deletePost = async () => {
                 </div>
                 <span class="username">{{ post.author?.username }}</span>
             </div>
-            <span class="date">{{ formatDate(post.createdAt) }}</span>
+            <div class="meta-right">
+                <div class="post-tags" v-if="post.tags && post.tags.length > 0">
+                    <span v-for="tag in post.tags" :key="tag.id" class="post-tag">#{{ tag.name }}</span>
+                </div>
+                <span class="date">{{ formatDate(post.createdAt) }}</span>
+            </div>
         </div>
         <div class="post-body">
             <div v-if="post.image" class="post-image-large">
@@ -272,6 +277,26 @@ const deletePost = async () => {
 .date {
   color: #999;
   font-size: 13px;
+}
+
+.meta-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 5px;
+}
+
+.post-tags {
+    display: flex;
+    gap: 8px;
+}
+
+.post-tag {
+    font-size: 12px;
+    background: #fff5f0;
+    color: #fa7d3c;
+    padding: 2px 8px;
+    border-radius: 10px;
 }
 
 .post-body {

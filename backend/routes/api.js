@@ -4,6 +4,7 @@ const authController = require('../controllers/authController');
 const postController = require('../controllers/postController');
 const commentController = require('../controllers/commentController');
 const userController = require('../controllers/userController');
+const aiController = require('../controllers/aiController');
 const basicAuth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
 
@@ -11,7 +12,11 @@ const optionalAuth = require('../middleware/optionalAuth');
 router.post('/auth/register', authController.register);
 router.post('/auth/login', authController.login);
 
+// AI Chat
+router.post('/ai/chat', aiController.chatWithAI);
+
 // Posts
+router.get('/posts/dates', optionalAuth, postController.getPostDates);
 router.get('/posts', optionalAuth, postController.getAllPosts);
 router.get('/posts/:id', postController.getPostById);
 router.get('/posts/user/:username', optionalAuth, postController.getPostsByUser);

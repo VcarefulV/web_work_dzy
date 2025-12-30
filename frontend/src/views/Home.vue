@@ -10,16 +10,32 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const followedAuthors = ref(new Set()) // Track followed user IDs
+const tags = ref([])
+
+onMounted(async () => {
+    // Fetch Tags
+    try {
+        const res = await api.get('/tags')
+        tags.value = res.data
+    } catch (e) {
+        console.error('Failed to fetch tags', e)
+    }
+    fetchPosts()
+})
 
 const fetchPosts = async () => {
     loading.value = true
     try {
         const params = {}
         if (route.query.filter) params.filter = route.query.filter
+        if (route.query.tag && route.query.tag !== 'all') params.tag = route.query.tag
+        if (route.query.tag && route.query.tag !== 'all') params.tag = route.query.tag
+        if (route.query.date) params.date = route.query.date
+        if (route.query.authorId) params.authorId = route.query.authorId
         
         // Pass filter to backend. We don't verify q/category in backend yet, so we stick to client side filtering for those if needed.
         // Actually, let's pass params to api.
-        const response = await api.get('/posts', { params: { filter: params.filter } })
+        const response = await api.get('/posts', { params })
         let allPosts = response.data.map(p => ({
             ...p,
             likes: p.likeCount,
@@ -49,7 +65,7 @@ const fetchPosts = async () => {
     }
 }
 
-onMounted(fetchPosts)
+// onMounted(fetchPosts) // Moved to top-level onMounted to combine with tags fetch
 
 watch(() => route.query, fetchPosts)
 
@@ -148,11 +164,17 @@ const isFollowed = (author) => {
 <template>
   <section class="main-feed">
     <!-- Tabs -->
+    <!-- Tabs -->
     <div class="feed-tabs">
-      <RouterLink to="/?filter=recommended" :class="{ active: !route.query.filter || route.query.filter === 'recommended' }">推荐</RouterLink>
-      <RouterLink to="/?filter=follow" :class="{ active: route.query.filter === 'follow' }">关注</RouterLink>
-      <RouterLink to="/?filter=latest" :class="{ active: route.query.filter === 'latest' }">最新</RouterLink>
-      <RouterLink to="/?filter=hot" :class="{ active: route.query.filter === 'hot' }">热榜</RouterLink>
+        <RouterLink to="/" :class="{ active: !route.query.tag || route.query.tag === 'all' }">全部</RouterLink>
+        <RouterLink 
+            v-for="tag in tags" 
+            :key="tag.id" 
+            :to="'/?tag=' + tag.id"
+            :class="{ active: Number(route.query.tag) === tag.id }"
+        >
+            {{ tag.name }}
+        </RouterLink>
     </div>
 
     <!-- Create Post Trigger (if logged in) -->
@@ -182,7 +204,10 @@ const isFollowed = (author) => {
           </button>
         </div>
         <div class="post-content">
-          <h3><RouterLink :to="'/posts/' + post.id">{{ post.title }}</RouterLink></h3>
+          <h3>
+              <RouterLink :to="'/posts/' + post.id">{{ post.title }}</RouterLink>
+              <span v-for="tag in post.tags" :key="tag.id" class="post-tag">#{{ tag.name }}</span>
+          </h3>
           <div v-if="post.image" class="post-cover">
               <img :src="post.image" alt="Cover" @click="$router.push('/posts/' + post.id)" />
           </div>
@@ -368,6 +393,10 @@ const isFollowed = (author) => {
 .post-content h3 {
   margin: 0 0 8px 0;
   font-size: 18px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 .post-content h3 a {
   text-decoration: none;
@@ -375,6 +404,14 @@ const isFollowed = (author) => {
 }
 .post-content h3 a:hover {
   color: #fa7d3c;
+}
+.post-tag {
+    font-size: 12px;
+    background: #fff5f0;
+    color: #fa7d3c;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: normal;
 }
 
 .post-cover {

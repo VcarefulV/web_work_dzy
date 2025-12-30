@@ -3,14 +3,66 @@ import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { computed, ref, onMounted } from 'vue'
 import api from '@/utils/http'
+import CalendarWidget from '@/components/CalendarWidget.vue'
 
 const authStore = useAuthStore()
 const router = useRouter()
 const user = computed(() => authStore.user)
 const searchQuery = ref('')
 const hotPosts = ref([])
+const currentDate = ref('')
+const weather = ref('') 
+const showCalendar = ref(false)
+const postDates = ref(new Set())
+
+const updateDate = () => {
+    const now = new Date()
+    const days = ['日', '一', '二', '三', '四', '五', '六']
+    currentDate.value = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 星期${days[now.getDay()]}`
+}
+
+const fetchPostDates = async () => {
+    try {
+        const res = await api.get('/posts/dates')
+        postDates.value = new Set(res.data)
+    } catch (e) {
+        console.error('Failed to fetch post dates', e)
+    }
+}
+
+const handleDateClick = (dateStr) => {
+    showCalendar.value = false
+    let query = `/?date=${dateStr}`
+    if (authStore.user) {
+        query += `&authorId=${authStore.user.id}`
+    }
+    router.push(query)
+}
+
+const fetchWeather = async () => {
+    try {
+        const key = 'Sen6WKjtsEuJgnOPb';
+        // Using fetch directly to avoid axios interceptors if they exist for internal API
+        const res = await fetch(`https://api.seniverse.com/v3/weather/now.json?key=${key}&location=ip&language=zh-Hans&unit=c`)
+        const data = await res.json()
+        if (data.results && data.results[0]) {
+            const now = data.results[0].now
+            const location = data.results[0].location
+            weather.value = `${location.name} ${now.text} ${now.temperature}°C` // e.g. 北京 晴 26°C
+        }
+    } catch (e) {
+        console.error('Failed to fetch weather', e)
+        weather.value = '天气获取失败'
+    }
+}
 
 onMounted(async () => {
+    updateDate()
+    fetchWeather()
+    fetchPostDates()
+    setInterval(updateDate, 60000) /* Update every minute */
+    setInterval(fetchWeather, 30 * 60 * 1000) /* Update weather every 30 mins */
+    
     // Fetch hot posts for the right sidebar widget
     try {
         const response = await api.get('/posts?filter=hot&limit=5')
@@ -67,6 +119,12 @@ const handleSearch = () => {
                 </div>
             </div>
             <div class="nav-links">
+            <div class="date-weather-wrapper" @mouseenter="showCalendar = true" @mouseleave="showCalendar = false">
+                <span class="weather-info">{{ currentDate }}&nbsp;&nbsp;{{ weather }}</span>
+                <div class="calendar-popover" v-if="showCalendar">
+                    <CalendarWidget :events="postDates" @dateClick="handleDateClick" />
+                </div>
+            </div>
             <RouterLink to="/">首页</RouterLink>
             <RouterLink to="/create" v-if="user">发布</RouterLink>
             <div class="auth-area" v-if="!user">
@@ -101,6 +159,7 @@ const handleSearch = () => {
                     <li :class="{ active: $route.query.filter === 'recommended' || (!$route.query.filter && $route.path === '/') }"><RouterLink to="/?filter=recommended">综合推荐</RouterLink></li>
                     <li :class="{ active: $route.query.filter === 'follow' }"><RouterLink to="/?filter=follow">关注</RouterLink></li>
                     <li :class="{ active: $route.query.filter === 'latest' }"><RouterLink to="/?filter=latest">最新发布</RouterLink></li>
+                    <li :class="{ active: $route.query.filter === 'hot' }"><RouterLink to="/?filter=hot">热榜</RouterLink></li>
                     </ul>
                 </div>
                 <div class="menu-group">
@@ -111,10 +170,17 @@ const handleSearch = () => {
                     <li :class="{ active: $route.query.tab === 'likes' }"><RouterLink to="/profile?tab=likes">我的赞</RouterLink></li>
                     </ul>
                 </div>
+                
+                <!-- AI Chat Button -->
+                <div class="menu-group">
+                    <ul>
+                         <li :class="{ active: $route.path === '/chat' }"><RouterLink to="/chat"><i class="iconfont icon-heart"></i> 情绪搭子</RouterLink></li>
+                    </ul>
+                </div>
             </aside>
 
             <!-- Main Content Area (Dynamic) -->
-            <main class="content-area">
+            <main class="content-area" :class="{ 'full-width': $route.path === '/chat' }">
                 <RouterView />
             </main>
 
@@ -308,6 +374,29 @@ ul {
   font-size: 15px;
 }
 
+.date-weather-wrapper {
+    position: relative;
+    cursor: pointer;
+    height: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.calendar-popover {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 2000;
+    padding-top: 10px;
+}
+
+.weather-info {
+    font-size: 14px;
+    color: #666;
+    margin-right: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
 .nav-links a:hover {
   color: #fa7d3c;
 }
@@ -409,8 +498,8 @@ ul {
 /* Layout Body */
 .main-body {
     display: grid;
-    grid-template-columns: 220px 1fr 320px; /* Left Sidebar, Content, Right Sidebar */
-    column-gap: 40px; /* Increase gap to prevent visual cramping */
+    grid-template-columns: 200px 1fr 280px; /* Left Sidebar, Content, Right Sidebar */
+    column-gap: 20px; /* Increase gap to prevent visual cramping */
     padding-top: 80px;
     padding-left: 20px; /* Symmetrical padding */
     padding-right: 20px;
@@ -458,6 +547,10 @@ ul {
     min-width: 0;
     max-width: 800px; /* Prevent feed from getting ridiculously wide on 4k screens, but align it nicely */
     margin: 0; /* Align left within its cell */
+}
+
+.content-area.full-width {
+    max-width: 100%;
 }
 
 /* Right Sidebar Styles */

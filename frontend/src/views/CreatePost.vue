@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import api from '@/utils/http'
 import { useRouter } from 'vue-router'
 
@@ -10,6 +10,31 @@ const fileInput = ref(null)
 const router = useRouter()
 const postStatus = ref('published')
 const publishTime = ref('')
+const tags = ref([])
+const selectedTags = ref([])
+
+onMounted(async () => {
+    try {
+        const res = await api.get('/tags')
+        tags.value = res.data
+    } catch (e) {
+        console.error('Failed to fetch tags', e)
+    }
+})
+
+const toggleTag = (tagId) => {
+    if (selectedTags.value.includes(tagId)) {
+        selectedTags.value = selectedTags.value.filter(id => id !== tagId)
+    } 
+    else {
+        // Optional: Limit to e.g., 3 tags
+        if (selectedTags.value.length >= 3) {
+            alert('最多选择3个标签')
+            return
+        }
+        selectedTags.value.push(tagId)
+    }
+}
 
 const triggerFileInput = () => {
     fileInput.value.click()
@@ -49,12 +74,13 @@ const handleSubmit = async () => {
         alert('请选择定时发布时间')
         return
     }
-  try {
-    const payload = { 
+    try {
+        const payload = { 
         title: title.value, 
         content: content.value,
         image: postImage.value,
-        status: postStatus.value
+        status: postStatus.value,
+        tags: selectedTags.value
     }
     
     if (postStatus.value === 'scheduled') {
@@ -107,6 +133,22 @@ const handleSubmit = async () => {
             required
             class="textarea-field"
           ></textarea>
+        </div>
+
+        <div class="form-group">
+            <label>标签</label>
+            <div class="tags-container">
+                <div 
+                    v-for="tag in tags" 
+                    :key="tag.id" 
+                    class="tag-chip" 
+                    :class="{ active: selectedTags.includes(tag.id) }"
+                    @click="toggleTag(tag.id)"
+                >
+                    {{ tag.name }}
+                </div>
+            </div>
+            <div v-if="tags.length === 0" style="font-size: 13px; color: #999;">暂无标签可选</div>
         </div>
 
         <div class="form-group">
@@ -211,6 +253,34 @@ const handleSubmit = async () => {
   transition: all 0.3s;
   box-sizing: border-box;
   font-family: inherit;
+}
+
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.tag-chip {
+    padding: 6px 14px;
+    background: #f0f2f5;
+    border-radius: 20px;
+    font-size: 14px;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.tag-chip:hover {
+    background: #e1e4e8;
+}
+
+.tag-chip.active {
+    background: #fff5f0;
+    color: #fa7d3c;
+    border-color: #fa7d3c;
+    font-weight: 500;
 }
 
 .input-field:focus, .textarea-field:focus {

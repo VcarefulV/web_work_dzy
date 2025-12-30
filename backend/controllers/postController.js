@@ -21,9 +21,30 @@ const updateExpiredScheduledPosts = async (posts) => {
     }
 };
 
+exports.getPostDates = async (req, res) => {
+    // Require user to be logged in to see "My Calendar" data
+    if (!req.user) {
+        return res.json([]);
+    }
+    const currentUserId = req.user.id;
+    try {
+        const [rows] = await db.execute(`
+            SELECT DISTINCT DATE_FORMAT(created_at, '%Y-%m-%d') as date
+            FROM posts
+            WHERE status = 'published' AND publish_at <= NOW() AND user_id = ?
+            ORDER BY date DESC
+        `, [currentUserId]);
+        const dates = rows.map(r => r.date);
+        res.json(dates);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
 exports.getAllPosts = async (req, res) => {
     const currentUserId = req.user ? req.user.id : null;
-    const { filter, limit } = req.query;
+    const { filter, limit, tag, date, authorId } = req.query;
 
     try {
         let query = `
@@ -44,6 +65,23 @@ exports.getAllPosts = async (req, res) => {
 
         const params = [currentUserId, currentUserId, currentUserId];
 
+        // Filter: Tag
+        if (tag && tag !== 'all') {
+            query += ` AND EXISTS (SELECT 1 FROM post_tags pt WHERE pt.post_id = p.id AND pt.tag_id = ?)`;
+            params.push(tag);
+        }
+
+        if (date) {
+            query += ` AND DATE(p.created_at) = ?`;
+            params.push(date);
+        }
+
+        // Filter: Author (for personal calendar view)
+        if (authorId) {
+            query += ` AND p.user_id = ?`;
+            params.push(authorId);
+        }
+
         // Filter: Follow
         if (filter === 'follow') {
             if (!currentUserId) {
@@ -56,6 +94,8 @@ exports.getAllPosts = async (req, res) => {
         // Ordering
         if (filter === 'hot') {
             query += ` ORDER BY like_count DESC, p.created_at DESC`;
+        } else if (filter === 'recommended') {
+            query += ` ORDER BY (like_count * 2 + comment_count) DESC, p.created_at DESC`;
         } else {
             // Default latest
             query += ` ORDER BY p.created_at DESC`;
@@ -95,7 +135,32 @@ exports.getAllPosts = async (req, res) => {
             isFavorited: post.is_favorited > 0
         }));
 
-        res.json(formattedPosts);
+        // Fetch Tags for these posts
+        const postIds = posts.map(p => p.id);
+        let tagsMap = {};
+        if (postIds.length > 0) {
+            // Using placeholders for array
+            const placeholders = postIds.map(() => '?').join(',');
+            const [tagsResults] = await db.execute(`
+                SELECT pt.post_id, t.id, t.name 
+                FROM tags t 
+                JOIN post_tags pt ON t.id = pt.tag_id 
+                WHERE pt.post_id IN(${placeholders})
+            `, postIds);
+
+            tagsResults.forEach(row => {
+                if (!tagsMap[row.post_id]) tagsMap[row.post_id] = [];
+                tagsMap[row.post_id].push({ id: row.id, name: row.name });
+            });
+        }
+
+        // Re-map to add tags
+        const finalPosts = formattedPosts.map(p => ({
+            ...p,
+            tags: tagsMap[p.id] || []
+        }));
+
+        res.json(finalPosts);
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -153,8 +218,17 @@ exports.createPost = async (req, res) => {
             [title, content, userId, imageUrl, finalStatus, finalPublishAt]
         );
         const newPostId = result.insertId;
+
+        // Handle Tags
+        const { tags } = req.body; // Expecting array of tag IDs or Names. Let's assume IDs for simplicity given the UI plan, or Names if we want to be flexible.
+        // Let's go with Tag IDs to keep it relational.
+        if (tags && Array.isArray(tags) && tags.length > 0) {
+            const tagValues = tags.map(tagId => [newPostId, tagId]);
+            await db.query('INSERT IGNORE INTO post_tags (post_id, tag_id) VALUES ?', [tagValues]);
+        }
+
         const [newPost] = await db.execute('SELECT * FROM posts WHERE id = ?', [newPostId]);
-        res.json({ ...newPost[0], likeCount: 0, commentCount: 0, isLiked: false, isFavorited: false });
+        res.json({ ...newPost[0], likeCount: 0, commentCount: 0, isLiked: false, isFavorited: false, tags: tags || [] });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Server error' });
@@ -187,6 +261,14 @@ exports.getPostById = async (req, res) => {
         await updateExpiredScheduledPosts(posts);
 
         const post = posts[0];
+        // Fetch Tags for this post
+        const [tagsResults] = await db.execute(`
+            SELECT t.id, t.name 
+            FROM tags t 
+            JOIN post_tags pt ON t.id = pt.tag_id 
+            WHERE pt.post_id = ?
+        `, [postId]);
+
         const formattedPost = {
             id: post.id,
             title: post.title,
@@ -205,7 +287,8 @@ exports.getPostById = async (req, res) => {
             likeCount: post.like_count,
             commentCount: post.comment_count,
             isLiked: post.is_liked > 0,
-            isFavorited: post.is_favorited > 0
+            isFavorited: post.is_favorited > 0,
+            tags: tagsResults
         };
         res.json(formattedPost);
     } catch (err) {
