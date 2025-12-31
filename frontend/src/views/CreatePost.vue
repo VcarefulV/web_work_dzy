@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import api from '@/utils/http'
 import { useRouter } from 'vue-router'
+import CalendarWidget from '@/components/CalendarWidget.vue'
 
 const title = ref('')
 const content = ref('')
@@ -10,6 +11,8 @@ const fileInput = ref(null)
 const router = useRouter()
 const postStatus = ref('published')
 const publishTime = ref('')
+const showCalendar = ref(false)
+const formattedPublishTime = ref('')
 const tags = ref([])
 const selectedTags = ref([])
 
@@ -68,6 +71,24 @@ const clearImage = () => {
     }
 }
 
+const handleDateConfirm = (dateObj) => {
+    // dateObj is a Date object
+    // Format for display: YYYY-MM-DD HH:mm
+    const year = dateObj.getFullYear()
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0')
+    const day = String(dateObj.getDate()).padStart(2, '0')
+    const hour = String(dateObj.getHours()).padStart(2, '0')
+    const minute = String(dateObj.getMinutes()).padStart(2, '0')
+    
+    formattedPublishTime.value = `${year}-${month}-${day} ${hour}:${minute}`
+    publishTime.value = dateObj.toISOString() // Store ISO for backend
+    showCalendar.value = false
+}
+
+const toggleCalendar = () => {
+    showCalendar.value = !showCalendar.value
+}
+
 const handleSubmit = async () => {
     // Basic validation
     if (postStatus.value === 'scheduled' && !publishTime.value) {
@@ -84,9 +105,7 @@ const handleSubmit = async () => {
     }
     
     if (postStatus.value === 'scheduled') {
-        // Convert local time to ISO string or just send as is (backend expects timestamp friendly)
-        // Let's send ISO string
-        payload.publishAt = new Date(publishTime.value).toISOString()
+        payload.publishAt = publishTime.value
     }
 
     await api.post('/posts', payload)
@@ -190,7 +209,19 @@ const handleSubmit = async () => {
             
             <div v-if="postStatus === 'scheduled'" class="schedule-input animated-fade">
                 <label>选择发布时间：</label>
-                <input type="datetime-local" v-model="publishTime" class="input-field date-input">
+                <div class="date-picker-wrapper">
+                    <input 
+                        type="text" 
+                        :value="formattedPublishTime" 
+                        placeholder="点击选择时间" 
+                        readonly 
+                        class="input-field date-input"
+                        @click="toggleCalendar"
+                    >
+                    <div class="calendar-popover" v-if="showCalendar">
+                        <CalendarWidget :showTime="true" @confirm="handleDateConfirm" />
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -458,5 +489,17 @@ const handleSubmit = async () => {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-5px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+.date-picker-wrapper {
+    position: relative;
+    width: 250px;
+}
+.calendar-popover {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    margin-top: 5px;
 }
 </style>

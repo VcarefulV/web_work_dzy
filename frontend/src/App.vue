@@ -82,6 +82,10 @@ const handleSearch = () => {
         router.push(`/?q=${encodeURIComponent(searchQuery.value)}`)
     }
 }
+
+const jumpToProfile = (tab) => {
+    router.push({ path: '/profile', query: { tab } })
+}
 </script>
 
 <template>
@@ -166,8 +170,6 @@ const handleSearch = () => {
                     <h3><i class="iconfont icon-user"></i> 我的</h3>
                     <ul>
                     <li :class="{ active: $route.path === '/profile' && !$route.query.tab }"><RouterLink to="/profile">个人中心</RouterLink></li>
-                    <li :class="{ active: $route.query.tab === 'favorites' }"><RouterLink to="/profile?tab=favorites">我的收藏</RouterLink></li>
-                    <li :class="{ active: $route.query.tab === 'likes' }"><RouterLink to="/profile?tab=likes">我的赞</RouterLink></li>
                     </ul>
                 </div>
                 
@@ -203,9 +205,9 @@ const handleSearch = () => {
                     </div>
                     <p class="user-name">{{ authStore.user.username }}</p>
                     <div class="stats">
-                        <div class="stat"><strong>0</strong><span>关注</span></div>
-                        <div class="stat"><strong>0</strong><span>粉丝</span></div>
-                        <div class="stat"><strong>0</strong><span>文章</span></div>
+                        <div class="stat" @click="jumpToProfile('following')"><strong>{{ authStore.user?.stats?.following_count || authStore.user?.following_count || 0 }}</strong><span>关注</span></div>
+                        <div class="stat" @click="jumpToProfile('followers')"><strong>{{ authStore.user?.stats?.followers_count || authStore.user?.followers_count || 0 }}</strong><span>粉丝</span></div>
+                        <div class="stat" @click="jumpToProfile('posts')"><strong>{{ authStore.user?.stats?.post_count || authStore.user?.post_count || 0 }}</strong><span>文章</span></div>
                     </div>
                     </div>
                 </div>
@@ -655,6 +657,14 @@ ul {
   align-items: center;
   font-size: 12px;
   color: #939393;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.user-widget .stat:hover {
+    color: #fa7d3c;
+}
+.user-widget .stat:hover strong {
+    color: #fa7d3c;
 }
 .user-widget .stat strong {
   font-size: 16px;

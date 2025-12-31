@@ -16,35 +16,17 @@ const tabs = [
   { key: 'drafts', label: '草稿箱' },
   { key: 'scheduled', label: '定时发布' },
   { key: 'favorites', label: '我的收藏' },
-  { key: 'likes', label: '我的赞' }
+  { key: 'likes', label: '我的赞' },
+  { key: 'following', label: '关注' },
+  { key: 'followers', label: '粉丝' }
 ]
 
 // Mock data for other tabs since backend doesn't support them yet
 const likedPosts = ref([])
 const favoritePosts = ref([])
+const followingList = ref([])
+const followersList = ref([])
 
-onMounted(async () => {
-  if (route.query.tab) {
-      activeTab.value = route.query.tab
-  }
-  
-  if (authStore.user) {
-    try {
-      // Fetch user posts (using specific endpoint that supports drafts for owner)
-      const response = await api.get(`/posts/user/${authStore.user.username}`) 
-      myPosts.value = response.data
-      
-      // Refresh user info to get latest stats
-      const userRes = await api.get('/users/me')
-      console.log('User stats:', userRes.data)
-      if (userRes.data.stats) {
-          authStore.user = { ...authStore.user, ...userRes.data, stats: userRes.data.stats }
-      }
-    } catch (e) {
-      console.error(e)
-    }
-  }
-})
 
 watch(() => route.query.tab, (newTab) => {
     if (newTab) activeTab.value = newTab
@@ -69,9 +51,11 @@ const currentList = computed(() => {
         return myPosts.value.filter(p => p.status === 'scheduled' && new Date(p.publishAt) > now)
     }
     if (activeTab.value === 'favorites') {
-        return favoritePosts.value.filter(f => f && f.post).map(f => f.post)
+        return favoritePosts.value.filter(f => f && f.post)
     }
     if (activeTab.value === 'likes') return likedPosts.value
+    if (activeTab.value === 'following') return followingList.value
+    if (activeTab.value === 'followers') return followersList.value
     return []
 })
 
@@ -90,11 +74,22 @@ const fetchUserData = async () => {
         const likeRes = await api.get('/users/me/likes')
         likedPosts.value = likeRes.data
 
+        // Fetch following
+        const followingRes = await api.get('/users/me/following')
+        followingList.value = followingRes.data
+
+        // Fetch followers
+        const followersRes = await api.get('/users/me/followers')
+        followersList.value = followersRes.data
+
         // Refresh user info
         const userRes = await api.get('/users/me')
-        if (userRes.data.stats) {
-            authStore.user = { ...authStore.user, ...userRes.data, stats: userRes.data.stats }
+        const stats = userRes.data.stats || {
+             post_count: userRes.data.post_count || 0,
+             following_count: userRes.data.following_count || 0,
+             followers_count: userRes.data.followers_count || 0
         }
+        authStore.user = { ...authStore.user, ...userRes.data, stats }
     } catch (e) {
         console.error(e)
     }
@@ -195,6 +190,36 @@ const deletePost = async (id) => {
         alert('删除失败')
     }
 }
+
+const cancelFavorite = async (postId) => {
+    if (!confirm('确定要取消收藏吗？')) return
+    try {
+        await api.post(`/posts/${postId}/favorite`)
+        // Remove from local list
+        favoritePosts.value = favoritePosts.value.filter(f => f.post.id !== postId)
+        alert('已取消收藏')
+    } catch (e) {
+        console.error(e)
+        alert('操作失败')
+    }
+}
+
+const unfollow = async (userId) => {
+    if (!confirm('确定要取消关注吗？')) return
+    try {
+        await api.post('/users/follow', { userId })
+        // Remove from local list
+        followingList.value = followingList.value.filter(u => u.id !== userId)
+        // Update stats
+        if (authStore.user && authStore.user.stats) {
+             authStore.user.stats.following_count--
+        }
+        alert('已取消关注')
+    } catch (e) {
+        console.error(e)
+        alert('操作失败')
+    }
+}
 </script>
 
 <template>
@@ -249,6 +274,33 @@ const deletePost = async (id) => {
                          <RouterLink :to="'/posts/' + like.post.id">{{ like.post.title }}</RouterLink>
                      </div>
                  </div>
+            </template>
+            <template v-else-if="activeTab === 'favorites'">
+                <div v-for="fav in currentList" :key="fav.id" class="list-item">
+                    <div class="item-main" v-if="fav.post">
+                        <h3><RouterLink :to="'/posts/' + fav.post.id">{{ fav.post.title }}</RouterLink></h3>
+                        <div v-if="fav.post.image" class="post-cover-small">
+                             <img :src="fav.post.image" alt="Cover" />
+                        </div>
+                        <p class="excerpt">{{ fav.post.content.substring(0, 100) }}...</p>
+                        <div class="meta">
+                            <span>{{ formatDate(fav.post.publishAt || fav.post.createdAt) }}</span>
+                            <span>By {{ fav.post.author?.username || 'Unknown' }}</span>
+                        </div>
+                    </div>
+                    <button class="action-btn" v-if="fav.post" @click.stop="cancelFavorite(fav.post.id)">取消收藏</button>
+                </div>
+            </template>
+            <template v-else-if="activeTab === 'following' || activeTab === 'followers'">
+                <div v-for="user in currentList" :key="user.id" class="list-item row-between">
+                     <div class="like-info">
+                         <div class="avatar-small" :style="{ backgroundImage: user.avatar ? `url(${user.avatar})` : '' }">
+                             {{ !user.avatar ? user.username?.charAt(0).toUpperCase() : '' }}
+                         </div>
+                         <span class="liker-name">{{ user.username }}</span>
+                     </div>
+                     <button v-if="activeTab === 'following'" class="action-btn outline" @click.stop="unfollow(user.id)">取消关注</button>
+                </div>
             </template>
             <template v-else>
                 <div v-for="post in currentList" :key="post.id" class="list-item">
@@ -537,6 +589,33 @@ const deletePost = async (id) => {
     color: #999;
     font-size: 12px;
     margin-left: auto;
+}
+.row-between {
+    justify-content: space-between;
+    align-items: center;
+}
+.action-btn {
+    padding: 6px 12px;
+    background: #fa7d3c;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+.action-btn:hover {
+    background: #e06d30;
+}
+.action-btn.outline {
+    background: #fff;
+    border: 1px solid #ddd;
+    color: #666;
+}
+.action-btn.outline:hover {
+    border-color: #fa7d3c;
+    color: #fa7d3c;
+    background: #fff;
 }
 .liked-post {
     background: #f9f9f9;

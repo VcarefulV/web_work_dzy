@@ -177,7 +177,7 @@ public class UserService {
 
     @Transactional
     public java.util.List<Map<String, Object>> getUserLikes(Long userId) {
-        return likeRepository.findByPostUserIdOrderByCreatedAtDesc(userId).stream().map(like -> {
+        return likeRepository.findByUserIdOrderByCreatedAtDesc(userId).stream().map(like -> {
             com.example.backend.model.Post post = like.getPost();
             Map<String, Object> map = new java.util.HashMap<>();
             map.put("id", like.getId());
@@ -201,5 +201,49 @@ public class UserService {
         })
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toList());
+    }
+
+    public java.util.List<Map<String, Object>> getUserFollowers(Long userId) {
+        java.util.List<Long> followerIds = followRepository.findByFollowedId(userId).stream()
+                .map(com.example.backend.model.Follow::getFollowerId)
+                .collect(java.util.stream.Collectors.toList());
+
+        return userRepository.findAllById(followerIds).stream().map(user -> {
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", user.getId());
+            map.put("username", user.getUsername());
+            map.put("avatar", user.getAvatar());
+            map.put("bio", "Web Developer | Tech Enthusiast"); // Placeholder logic, add bio to User model later
+            return map;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    public java.util.List<Map<String, Object>> getUserFollowing(Long userId) {
+        java.util.List<Long> followingIds = followRepository.findByFollowerId(userId).stream()
+                .map(com.example.backend.model.Follow::getFollowedId)
+                .collect(java.util.stream.Collectors.toList());
+
+        return userRepository.findAllById(followingIds).stream().map(user -> {
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", user.getId());
+            map.put("username", user.getUsername());
+            map.put("avatar", user.getAvatar());
+            map.put("bio", "Web Developer | Tech Enthusiast"); // Placeholder logic
+            return map;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Transactional
+    public boolean toggleFollow(Long followerId, Long followedId) {
+        if (followRepository.existsByFollowerIdAndFollowedId(followerId, followedId)) {
+            followRepository.deleteByFollowerIdAndFollowedId(followerId, followedId);
+            return false;
+        } else {
+            com.example.backend.model.Follow follow = new com.example.backend.model.Follow();
+            follow.setFollowerId(followerId);
+            follow.setFollowedId(followedId);
+            followRepository.save(follow);
+            return true;
+        }
     }
 }

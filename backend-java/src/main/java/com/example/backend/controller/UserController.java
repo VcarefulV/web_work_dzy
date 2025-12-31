@@ -98,17 +98,8 @@ public class UserController {
         }
 
         // Logic inline here or move to service. Keeping thin controller.
-        boolean exists = followRepository.existsByFollowerIdAndFollowedId(currentUser.getId(), targetUserId);
-        if (exists) {
-            followRepository.deleteByFollowerIdAndFollowedId(currentUser.getId(), targetUserId);
-            return ResponseEntity.ok(Map.of("followed", false));
-        } else {
-            Follow follow = new Follow();
-            follow.setFollowerId(currentUser.getId());
-            follow.setFollowedId(targetUserId);
-            followRepository.save(follow);
-            return ResponseEntity.ok(Map.of("followed", true));
-        }
+        boolean isFollowed = userService.toggleFollow(currentUser.getId(), targetUserId);
+        return ResponseEntity.ok(Map.of("followed", isFollowed));
     }
 
     @GetMapping("/me/favorites")
@@ -127,5 +118,23 @@ public class UserController {
         }
         User currentUser = userService.getCurrentUser(authentication.getName());
         return ResponseEntity.ok(userService.getUserLikes(currentUser.getId()));
+    }
+
+    @GetMapping("/me/following")
+    public ResponseEntity<?> getMyFollowing(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(401).body(Map.of("message", "Authentication required"));
+        }
+        User currentUser = userService.getCurrentUser(authentication.getName());
+        return ResponseEntity.ok(userService.getUserFollowing(currentUser.getId()));
+    }
+
+    @GetMapping("/me/followers")
+    public ResponseEntity<?> getMyFollowers(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(401).body(Map.of("message", "Authentication required"));
+        }
+        User currentUser = userService.getCurrentUser(authentication.getName());
+        return ResponseEntity.ok(userService.getUserFollowers(currentUser.getId()));
     }
 }
