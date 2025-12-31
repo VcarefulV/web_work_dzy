@@ -37,26 +37,32 @@ public class PostService {
     @Autowired
     private TagRepository tagRepository;
 
+    @Autowired
+    private CommentRepository commentRepository;
+
     @Value("${app.upload.dir}")
     private String uploadDir;
 
     @Value("${server.port}")
     private String serverPort;
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<Map<String, Object>> getAllPosts(Long currentUserId, String filter, String tag, String date,
             Long authorId) {
-        // Simple implementation: Fetch all and filter in memory for complex logic not
-        // easily done in naming conventions
-        // For production, use Specifications or QueryDSL.
-        // Given the requirement "refactor based on existing code", we try to match
-        // logic.
-
         List<Post> posts;
 
         if (authorId != null) {
-            posts = postRepository.findAllByUserIdOrderByCreatedAtDesc(authorId);
+            // If viewing own profile, show all. Otherwise, show only published.
+            List<Post> userPosts = postRepository.findAllByUserIdOrderByCreatedAtDesc(authorId);
+            if (currentUserId != null && currentUserId.equals(authorId)) {
+                posts = userPosts;
+            } else {
+                posts = userPosts.stream()
+                        .filter(p -> "published".equals(p.getStatus()) || (p.getStatus() == null))
+                        .collect(Collectors.toList());
+            }
         } else {
-            // Default to all published
+            // Default to all published (Main Feed)
             posts = postRepository.findAllPublished(LocalDateTime.now());
         }
 
@@ -132,15 +138,20 @@ public class PostService {
         post.setStatus(status != null ? status : "published");
 
         if ("scheduled".equals(status) && publishAtStr != null) {
-            // Parse ISO date string
-            // Assuming format 2023-10-10T10:00:00.000Z
+            // Parse ISO date string (e.g. 2025-12-31T19:20:00.000Z)
+            // We must respect the timezone (Z meaning UTC) and convert to system default
             try {
-                // Simple parser, might need adjustment based on frontend format
-                // frontend likely sends ISO string
-                post.setPublishAt(LocalDateTime.parse(publishAtStr.replace("Z", "")));
+                java.time.Instant instant = java.time.Instant.parse(publishAtStr);
+                post.setPublishAt(LocalDateTime.ofInstant(instant, java.time.ZoneId.systemDefault()));
             } catch (Exception e) {
-                // handle parsing
-                post.setPublishAt(LocalDateTime.now());
+                // If parsing standard ISO fails, try simple Local parse as fallback
+                try {
+                    post.setPublishAt(LocalDateTime.parse(publishAtStr.replace("Z", "")));
+                } catch (Exception ex) {
+                    // If all fails, DO NOT default to NOW for scheduled posts,
+                    // otherwise it publishes immediately!
+                    throw new RuntimeException("Invalid Schedule Date format");
+                }
             }
         } else if ("published".equals(status)) {
             post.setPublishAt(LocalDateTime.now());
@@ -251,9 +262,9 @@ public class PostService {
         map.put("title", post.getTitle());
         map.put("content", post.getContent());
         map.put("image", post.getImage());
-        map.put("status", post.getStatus()); // Add logic for scheduled -> published check if needed
-        map.put("publishAt", post.getPublishAt());
-        map.put("createdAt", post.getCreatedAt());
+        map.put("status", post.getStatus());
+        map.put("publishAt", post.getPublishAt() != null ? post.getPublishAt().toString() : null);
+        map.put("createdAt", post.getCreatedAt() != null ? post.getCreatedAt().toString() : null);
 
         Map<String, Object> author = new HashMap<>();
         author.put("id", post.getUser().getId());
@@ -269,13 +280,34 @@ public class PostService {
         map.put("author", author);
 
         map.put("likeCount", likeRepository.countByPostId(post.getId()));
-        map.put("commentCount", 0); // TODO: wire comment repo
+        map.put("commentCount", commentRepository.countByPostId(post.getId()));
         map.put("isLiked",
                 currentUserId != null && likeRepository.existsByUserIdAndPostId(currentUserId, post.getId()));
         map.put("isFavorited",
                 currentUserId != null && favoriteRepository.existsByUserIdAndPostId(currentUserId, post.getId()));
-        map.put("tags", post.getTags());
+
+        try {
+            map.put("tags", post.getTags());
+        } catch (Exception e) {
+            map.put("tags", new ArrayList<>());
+        }
 
         return map;
+    }
+
+    @org.springframework.scheduling.annotation.Scheduled(fixedRate = 60000)
+    public void checkScheduledPosts() {
+        System.out.println("Checking for scheduled posts...");
+        List<Post> scheduledPosts = postRepository.findAll().stream()
+                .filter(p -> "scheduled".equals(p.getStatus()) && p.getPublishAt() != null
+                        && p.getPublishAt().isBefore(LocalDateTime.now()))
+                .collect(Collectors.toList());
+
+        for (Post post : scheduledPosts) {
+            post.setStatus("published");
+            post.setCreatedAt(post.getPublishAt()); // Sync created time with publish time
+            postRepository.save(post);
+            System.out.println("Published post: " + post.getId());
+        }
     }
 }

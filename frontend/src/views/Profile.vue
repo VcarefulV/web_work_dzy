@@ -68,7 +68,9 @@ const currentList = computed(() => {
         const now = new Date();
         return myPosts.value.filter(p => p.status === 'scheduled' && new Date(p.publishAt) > now)
     }
-    if (activeTab.value === 'favorites') return favoritePosts.value
+    if (activeTab.value === 'favorites') {
+        return favoritePosts.value.filter(f => f && f.post).map(f => f.post)
+    }
     if (activeTab.value === 'likes') return likedPosts.value
     return []
 })

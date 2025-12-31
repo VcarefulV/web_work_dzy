@@ -15,7 +15,7 @@ public interface PostRepository extends JpaRepository<Post, Long> {
     // For scheduled auto-publishing (simulated by filtering in query or cron)
     // We will do filtering in Service layer or custom query mostly.
 
-    @Query("SELECT p FROM Post p WHERE (p.status = 'published' OR (p.status = 'scheduled' AND p.publishAt <= :now)) ORDER BY p.createdAt DESC")
+    @Query("SELECT p FROM Post p WHERE (p.status = 'published' OR p.status IS NULL OR (p.status = 'scheduled' AND p.publishAt <= :now)) ORDER BY p.createdAt DESC")
     List<Post> findAllPublished(@Param("now") LocalDateTime now);
 
     @Query("SELECT p FROM Post p WHERE p.user.id = :userId ORDER BY p.createdAt DESC")

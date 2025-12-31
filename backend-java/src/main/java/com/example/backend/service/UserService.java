@@ -4,6 +4,8 @@ import com.example.backend.model.User;
 import com.example.backend.repository.UserRepository;
 import com.example.backend.repository.FollowRepository;
 import com.example.backend.repository.PostRepository;
+import com.example.backend.repository.FavoriteRepository;
+import com.example.backend.repository.LikeRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,7 +29,16 @@ public class UserService {
     private FollowRepository followRepository;
 
     @Autowired
+    private FavoriteRepository favoriteRepository;
+
+    @Autowired
+    private LikeRepository likeRepository;
+
+    @Autowired
     private PostRepository postRepository;
+
+    @Autowired
+    private PostService postService;
 
     @Value("${app.upload.dir}")
     private String uploadDir;
@@ -139,5 +150,56 @@ public class UserService {
         }
 
         return userRepository.save(user);
+    }
+
+    @Transactional
+    public java.util.List<Map<String, Object>> getUserFavorites(Long userId) {
+        return favoriteRepository.findByUserIdOrderByCreatedAtDesc(userId).stream().map(fav -> {
+            com.example.backend.model.Post post = fav.getPost();
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", fav.getId());
+            map.put("createdAt", fav.getCreatedAt());
+
+            // Handle null/deleted posts safely
+            if (post == null)
+                return null;
+            try {
+                map.put("post", postService.getPostById(post.getId(), userId));
+            } catch (Exception e) {
+                // Post might be deleted or not found
+                return null;
+            }
+            return map;
+        })
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    @Transactional
+    public java.util.List<Map<String, Object>> getUserLikes(Long userId) {
+        return likeRepository.findByPostUserIdOrderByCreatedAtDesc(userId).stream().map(like -> {
+            com.example.backend.model.Post post = like.getPost();
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", like.getId());
+            map.put("createdAt", like.getCreatedAt());
+
+            if (post == null)
+                return null;
+            try {
+                map.put("post", postService.getPostById(post.getId(), userId));
+            } catch (Exception e) {
+                return null;
+            }
+
+            Map<String, Object> liker = new java.util.HashMap<>();
+            liker.put("id", like.getUser().getId());
+            liker.put("username", like.getUser().getUsername());
+            liker.put("avatar", like.getUser().getAvatar());
+            map.put("liker", liker);
+
+            return map;
+        })
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
     }
 }

@@ -111,10 +111,21 @@ public class UserController {
         }
     }
 
-    // getMyFavorites and getMyLikes
-    // Implementing inline or via service
-    // Skipping implementation for now to save space, but added stubs in service if
-    // needed.
-    // Based on plan, these are needed.
-    // I will implement them using PostService.
+    @GetMapping("/me/favorites")
+    public ResponseEntity<?> getMyFavorites(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(401).body(Map.of("message", "Authentication required"));
+        }
+        User currentUser = userService.getCurrentUser(authentication.getName());
+        return ResponseEntity.ok(userService.getUserFavorites(currentUser.getId()));
+    }
+
+    @GetMapping("/me/likes")
+    public ResponseEntity<?> getMyLikes(Authentication authentication) {
+        if (authentication == null) {
+            return ResponseEntity.status(401).body(Map.of("message", "Authentication required"));
+        }
+        User currentUser = userService.getCurrentUser(authentication.getName());
+        return ResponseEntity.ok(userService.getUserLikes(currentUser.getId()));
+    }
 }

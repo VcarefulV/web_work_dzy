@@ -17,4 +17,6 @@ public interface LikeRepository extends JpaRepository<Like, Long> {
     List<Like> findByPostUserIdOrderByCreatedAtDesc(Long userId);
 
     List<Like> findByUserId(Long userId); // New for getting user's likes
+
+    List<Like> findByUserIdOrderByCreatedAtDesc(Long userId);
 }
